@@ -27,8 +27,8 @@ RUN apt-get update && apt-get install -y \
 COPY backend/requirements.txt ./backend_requirements.txt
 RUN pip install --no-cache-dir -r ./backend_requirements.txt
 
-# Download YOLOv8 model
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
+# Note: YOLOv8 model will be downloaded on first use (lazy loading)
+# This is faster than downloading during build and avoids PyTorch 2.6+ compatibility issues
 
 # Copy backend code
 COPY backend ./backend
