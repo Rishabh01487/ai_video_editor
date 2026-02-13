@@ -75,3 +75,6 @@ frontend/.env.*.local
 # Docker
 .docker
 docker-credentials
+
+# Temporary Claude Code working directories
+tmpclaude-*/
