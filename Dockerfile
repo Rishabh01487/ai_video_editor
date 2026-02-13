@@ -1,48 +1,63 @@
 # Multi-service Dockerfile for AI Video Editor Platform
-# Railway will use this to build and deploy
-# This image orchestrates both backend and frontend
-# Force rebuild (v5 - clear cache again)
+# Multi-stage build to minimize final image size
+# Stage 1: Build (builder)
+# Stage 2: Runtime (final, <4GB)
 
+# ========== STAGE 1: BUILDER ==========
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY backend/requirements.txt ./backend_requirements.txt
+RUN pip install --user --no-cache-dir -r ./backend_requirements.txt
+
+# Build frontend
+RUN apt-get update && apt-get install -y \
+    nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY frontend ./frontend
+WORKDIR /app/frontend
+ARG REACT_APP_API_URL=/api
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+RUN npm install --legacy-peer-deps && \
+    npm run build && \
+    rm -rf node_modules
+
+# ========== STAGE 2: RUNTIME ==========
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install ONLY runtime dependencies (no build tools)
 RUN apt-get update && apt-get install -y \
-    build-essential \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender1 \
-    git \
-    nodejs \
-    npm \
     curl \
     nginx \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy backend files
-COPY backend/requirements.txt ./backend_requirements.txt
-RUN pip install --no-cache-dir -r ./backend_requirements.txt
+# Copy Python packages from builder
+COPY --from=builder /root/.local /root/.local
+ENV PATH=/root/.local/bin:$PATH
 
-# Note: YOLOv8 model will be downloaded on first use (lazy loading)
-# This is faster than downloading during build and avoids PyTorch 2.6+ compatibility issues
-
-# Copy backend code
+# Copy Python code
 COPY backend ./backend
 
-# Setup frontend
-COPY frontend ./frontend
-WORKDIR /app/frontend
-ARG REACT_APP_API_URL=/api
-ENV REACT_APP_API_URL=$REACT_APP_API_URL
-RUN npm install --legacy-peer-deps
-RUN npm run build
-
-# Return to app root
-WORKDIR /app
+# Copy frontend build from builder
+COPY --from=builder /app/frontend/build ./frontend/build
 
 # Copy Nginx configuration
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
