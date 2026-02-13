@@ -39,6 +39,7 @@ WORKDIR /app
 
 # Install ONLY runtime dependencies (no build tools)
 RUN apt-get update && apt-get install -y \
+    bash \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
