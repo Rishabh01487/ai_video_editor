@@ -1,27 +1,2 @@
-# Railway.app ignore file
-# Files that won't be deployed
-
-.git
-.gitignore
-.env
-.env.local
-__pycache__
-*.pyc
-venv/
-node_modules/
-.DS_Store
-*.log
-.vs
-.vscode
-.idea
-*.swp
-*.swo
-*~
-dist/
-build/
-.pytest_cache/
-.coverage
-htmlcov/
-*.egg-info/
-.mypy_cache/
-tmpclaude*
+Procfile
+Procfile.*

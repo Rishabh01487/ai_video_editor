@@ -20,14 +20,14 @@ class Settings(BaseSettings):
     )
 
     # JWT
-    SECRET_KEY: str = Field(default="your-secret-key-change-in-production", alias="SECRET_KEY")
+    SECRET_KEY: str = Field(default="", alias="SECRET_KEY")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # S3/MinIO
-    S3_ACCESS_KEY: str = Field(default="minioadmin", alias="S3_ACCESS_KEY")
-    S3_SECRET_KEY: str = Field(default="minioadmin", alias="S3_SECRET_KEY")
-    S3_ENDPOINT_URL: str = Field(default="http://minio:9000", alias="S3_ENDPOINT_URL")
+    S3_ACCESS_KEY: str = Field(default="", alias="S3_ACCESS_KEY")
+    S3_SECRET_KEY: str = Field(default="", alias="S3_SECRET_KEY")
+    S3_ENDPOINT_URL: str = Field(default="", alias="S3_ENDPOINT_URL")
     S3_REGION: str = "us-east-1"
     S3_BUCKET: str = "ai-video-editor"
     S3_USE_SSL: bool = False
@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost", "http://frontend:3000"]
 
-    # Ollama
-    OLLAMA_BASE_URL: str = Field(default="http://host.docker.internal:11434", alias="OLLAMA_BASE_URL")
+    # Ollama (optional - set to empty string if not using)
+    OLLAMA_BASE_URL: str = Field(default="", alias="OLLAMA_BASE_URL")
     OLLAMA_MODEL: str = "llama3"
 
     # File Processing
