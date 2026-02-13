@@ -1,7 +1,7 @@
 # Multi-service Dockerfile for AI Video Editor Platform
 # Railway will use this to build and deploy
 # This image orchestrates both backend and frontend
-# Force rebuild (v2)
+# Force rebuild (v3)
 
 FROM python:3.11-slim
 
