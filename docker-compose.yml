@@ -1,140 +1,32 @@
-version: '3.9'
+version: '3.8'
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: ai-video-editor-postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ai_video_editor
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
-  # Redis Cache & Broker
-  redis:
-    image: redis:7-alpine
-    container_name: ai-video-editor-redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
-  # MinIO Object Storage
-  minio:
-    image: minio/minio:latest
-    container_name: ai-video-editor-minio
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/minio-data
-    command: server /minio-data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
-  # MinIO Bucket Creation
-  minio-init:
-    image: minio/mc:latest
-    container_name: ai-video-editor-minio-init
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
-      /usr/bin/mc mb myminio/ai-video-editor || true;
-      /usr/bin/mc anonymous set public myminio/ai-video-editor || true;
-      exit 0;
-      "
-    networks:
-      - app-network
-
-  # FastAPI Backend
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ai-video-editor-backend
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+    platform: linux/amd64
+    container_name: ai-video-backend
     environment:
-      # Application
-      DEBUG: "False"
-      SECRET_KEY: "your-super-secret-key-change-in-production-32-chars-min-12345678"
-      APP_NAME: "AI Video Editor Platform"
-
-      # Database
-      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/ai_video_editor"
-
-      # JWT
-      ALGORITHM: "HS256"
-      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-
-      # S3/MinIO
-      S3_ACCESS_KEY: "minioadmin"
-      S3_SECRET_KEY: "minioadmin"
-      S3_ENDPOINT_URL: "http://minio:9000"
-      S3_REGION: "us-east-1"
-      S3_BUCKET: "ai-video-editor"
-      S3_USE_SSL: "False"
-
-      # Redis
-      REDIS_URL: "redis://redis:6379/0"
-
-      # Celery
-      CELERY_BROKER_URL: "redis://redis:6379/0"
-      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
-
-      # CORS
-      CORS_ORIGINS: '["http://localhost:3000","http://localhost","http://frontend:3000"]'
-
-      # Ollama
-      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
-      OLLAMA_MODEL: "llama3"
-
-      # File Processing
-      MAX_FILE_SIZE: "524288000"
-      TEMP_DIR: "/tmp/ai_video_editor"
-      VIDEO_CODEC: "libx264"
-      VIDEO_PRESET: "medium"
-      AUDIO_CODEC: "aac"
-      VIDEO_BITRATE: "2500k"
-      AUDIO_BITRATE: "192k"
+      - PORT=8000
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/ai_video_editor}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_BUCKET=${S3_BUCKET:-ai-video-editor}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost}
+      - DEBUG=${DEBUG:-false}
+      - ENV=${ENV:-development}
     ports:
       - "8000:8000"
     volumes:
-      - /tmp/ai_video_editor:/tmp/ai_video_editor
+      - ai_models:/app/ai_engine/models
+      - temp_storage:/app/temp
+    depends_on:
+      - redis
+    restart: on-failure
     networks:
       - app-network
     healthcheck:
@@ -142,91 +34,79 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 10s
 
-  # Celery Worker
-  worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: ai-video-editor-worker
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    environment:
-      # (Same as backend)
-      DEBUG: "False"
-      SECRET_KEY: "your-super-secret-key-change-in-production-32-chars-min-12345678"
-      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/ai_video_editor"
-      CELERY_BROKER_URL: "redis://redis:6379/0"
-      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
-      REDIS_URL: "redis://redis:6379/0"
-      S3_ACCESS_KEY: "minioadmin"
-      S3_SECRET_KEY: "minioadmin"
-      S3_ENDPOINT_URL: "http://minio:9000"
-      S3_BUCKET: "ai-video-editor"
-      S3_USE_SSL: "False"
-      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
-      OLLAMA_MODEL: "llama3"
-      MAX_FILE_SIZE: "524288000"
-      TEMP_DIR: "/tmp/ai_video_editor"
-      VIDEO_CODEC: "libx264"
-      VIDEO_PRESET: "medium"
-      AUDIO_CODEC: "aac"
-    volumes:
-      - /tmp/ai_video_editor:/tmp/ai_video_editor
-    networks:
-      - app-network
-    command: celery -A workers.celery_app worker --loglevel=info --concurrency=2
-
-  # React Frontend
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: ai-video-editor-frontend
+      args:
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-/api}
+    platform: linux/amd64
+    container_name: ai-video-frontend
+    ports:
+      - "${PORT:-3000}:80"
     depends_on:
       - backend
-    environment:
-      REACT_APP_API_URL: "http://backend:8000"
-    ports:
-      - "3000:3000"
+    restart: on-failure
     networks:
       - app-network
+    environment:
+      - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000/api}
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 10s
 
-  # Nginx Reverse Proxy (Optional - for production)
-  nginx:
-    image: nginx:alpine
-    container_name: ai-video-editor-nginx
-    depends_on:
-      - backend
-      - frontend
-    ports:
-      - "80:80"
-      - "443:443"
+  redis:
+    image: redis:7-alpine
+    container_name: ai-video-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - redis_data:/data
     networks:
       - app-network
-    profiles:
-      - production
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    container_name: ai-video-worker
+    command: celery -A workers.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=100
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/ai_video_editor}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_BUCKET=${S3_BUCKET:-ai-video-editor}
+      - DEBUG=${DEBUG:-false}
+      - ENV=${ENV:-development}
+    volumes:
+      - ai_models:/app/ai_engine/models
+      - temp_storage:/app/temp
+    depends_on:
+      - backend
+      - redis
+    networks:
+      - app-network
+    restart: on-failure
 
 volumes:
-  postgres_data:
-    driver: local
-  minio_data:
-    driver: local
+  redis_data:
+  ai_models:
+  temp_storage:
 
 networks:
   app-network:

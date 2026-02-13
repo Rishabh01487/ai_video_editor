@@ -1,28 +1,36 @@
 # Frontend Dockerfile for AI Video Editor Platform
-FROM node:18-alpine
+# Stage 1: Build
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
-
 # Install dependencies
-RUN npm ci
+COPY package*.json ./
+RUN npm ci --verbose
 
-# Copy application code
+# Copy source code
 COPY . .
 
 # Build application
+ARG REACT_APP_API_URL=/api
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
 RUN npm run build
 
-# Serve with serve
-RUN npm install -g serve
+# Stage 2: Serve
+FROM nginx:1.25-alpine
 
-EXPOSE 3000
+# Copy nginx configuration
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
+# Copy build artifacts
+COPY --from=build /app/build /usr/share/nginx/html
 
-# Start serve
-CMD ["serve", "-s", "build", "-l", "3000"]
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
+
+# Expose port
+EXPOSE 80
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]
